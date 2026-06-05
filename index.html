@@ -139,8 +139,9 @@ select:focus,input:focus{border-color:var(--accent)}
 
 /* PILLS */
 .tp{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;font-family:var(--mono);border:1px solid transparent}
-.t1AA,.t2A{background:#dcfce7;color:#15803d;border-color:#86efac}
-.t3B{background:#fef9c3;color:#854d0e;border-color:#fde047}
+.t1AA{background:#dcfce7;color:#15803d;border-color:#86efac}
+.t2A{background:#fef9c3;color:#854d0e;border-color:#fde047}
+.t3B{background:#fff7ed;color:#c2410c;border-color:#fdba74}
 .t4C{background:#fff7ed;color:#c2410c;border-color:#fdba74}
 .t5D{background:#fef3c7;color:#b45309;border-color:#fbbf24}
 .t6E{background:#fee2e2;color:#b91c1c;border-color:#fca5a5}
@@ -224,7 +225,7 @@ select:focus,input:focus{border-color:var(--accent)}
 
   <div style="margin-top:22px">
     <div class="dtop">
-      <div class="shdr" style="margin:0;border:none;padding:0">Listado de Clientes — Todos los Tramos (AA → E3)</div>
+      <div class="shdr" style="margin:0;border:none;padding:0">Clientes en Deteriora — Tramos A · B · C · D · E · E1 · E2 · E3</div>
       <div class="dbadges">
         <span class="bdg bdr" id="dcnt">0 clientes</span>
         <span class="bdg bdb" id="dsal">$ 0,00</span>
@@ -237,10 +238,15 @@ select:focus,input:focus{border-color:var(--accent)}
       <select id="d2" onchange="renderClientes()"><option value="">Cobrador</option></select>
       <select id="d3" onchange="renderClientes()"><option value="">Producto</option></select>
       <select id="d4" onchange="renderClientes()">
-        <option value="">Todos los tramos</option>
-        <option>1_AA</option><option>2_A</option><option>3_B</option>
-        <option>4_C</option><option>5_D</option><option>6_E</option>
-        <option>7_E1</option><option>8_E2</option><option>9_E3</option>
+        <option value="">Todos (A→E3)</option>
+        <option value="2_A">A (1-30d)</option>
+        <option value="3_B">B (31-60d)</option>
+        <option value="4_C">C (61-90d)</option>
+        <option value="5_D">D (91-120d)</option>
+        <option value="6_E">E (121-150d)</option>
+        <option value="7_E1">E1 (151-180d)</option>
+        <option value="8_E2">E2 (181-360d)</option>
+        <option value="9_E3">E3 (+360d)</option>
       </select>
       <input type="date" id="d5" onchange="renderClientes()" title="Fecha Venc. desde">
       <input type="date" id="d6" onchange="renderClientes()" title="Fecha Venc. hasta">
@@ -280,11 +286,38 @@ const TRAMOS=['1_AA','2_A','3_B','4_C','5_D','6_E','7_E1','8_E2','9_E3'];
 const TDESC={'1_AA':'Al día','2_A':'1-30d','3_B':'31-60d','4_C':'61-90d','5_D':'91-120d','6_E':'121-150d','7_E1':'151-180d','8_E2':'181-360d','9_E3':'+360d'};
 const TPROV={'1_AA':.005,'2_A':.05,'3_B':.20,'4_C':.40,'5_D':.60,'6_E':.80,'7_E1':1,'8_E2':1,'9_E3':1};
 const EFIC={'1_AA':.00228,'2_A':.03642,'3_B':.10684,'4_C':.21457,'5_D':.34458,'6_E':.48764,'7_E1':.62397,'8_E2':.75702,'9_E3':.95};
+
+// ── REGLAS DE TRANSICIÓN REALES MARCIMEX ────────────────────────────────────
+// MANTIENE: AA→AA, A→A, B→B, C→C, D→D, E→E, E1→E1  (E2,E3 se mantienen)
+// EMPEORA:  AA→A, A→B, B→C, C→D, D→E, E→E1, E1→E2  (E2,E3 sin empeora definida)
+// MEJORA:   puede saltar a cualquier tramo mejor (pago parcial/total)
+// Fuente: modelo estadístico PLANTILLA.xlsx + reglas de calificación Marcimex
+
+// Probabilidades MODELO (sin gestión del jefe)
 const CM={'1_AA':.935,'2_A':.334,'3_B':.245,'4_C':.219,'5_D':.187,'6_E':.112,'7_E1':.089,'8_E2':.854,'9_E3':.999};
 const MM={'1_AA':0,'2_A':.261,'3_B':.179,'4_C':.096,'5_D':.055,'6_E':.053,'7_E1':.029,'8_E2':.003,'9_E3':.001};
+// Deterioro MODELO = 1 - CM - MM
+// Probabilidades JEFE DE TIENDA (con gestión activa)
 const CJ={'1_AA':.939,'2_A':.607,'3_B':.414,'4_C':.327,'5_D':.236,'6_E':.188,'7_E1':.131,'8_E2':.859,'9_E3':1};
-const MJ={'1_AA':0,'2_A':0,'3_B':0,'4_C':0,'5_D':0,'6_E':0,'7_E1':0,'8_E2':0,'9_E3':0};
-const DET=['4_C','5_D','6_E','7_E1','8_E2','9_E3'];
+const MJ={'1_AA':0,'2_A':.060,'3_B':.040,'4_C':.020,'5_D':.010,'6_E':.008,'7_E1':.005,'8_E2':.001,'9_E3':0};
+
+// Reglas de transición (para la matriz de seguimiento)
+// Destino de EMPEORA: el siguiente tramo
+const EMPEORA_A={'1_AA':'2_A','2_A':'3_B','3_B':'4_C','4_C':'5_D','5_D':'6_E','6_E':'7_E1','7_E1':'8_E2','8_E2':'9_E3','9_E3':null};
+// Destinos posibles de MEJORA (puede saltar varios tramos)
+const MEJORA_DESDE={
+  '1_AA':[], // AA no mejora (ya está arriba)
+  '2_A': ['1_AA'],                                           // A puede ir a AA
+  '3_B': ['1_AA','2_A'],                                    // B puede ir a AA o A
+  '4_C': ['1_AA','2_A','3_B'],                              // C puede ir a AA, A o B
+  '5_D': ['1_AA','2_A','3_B','4_C'],                        // D puede ir a AA,A,B,C
+  '6_E': ['1_AA','2_A','3_B','4_C','5_D'],                  // E puede ir a AA,A,B,C,D
+  '7_E1':['1_AA','2_A','3_B','4_C','5_D','6_E'],            // E1 puede ir a AA,A,B,C,D,E
+  '8_E2':['1_AA','2_A','3_B','4_C','5_D','6_E','7_E1'],     // E2 no tiene mejora definida en reglas → igual que E1
+  '9_E3':['1_AA','2_A','3_B','4_C','5_D','6_E','7_E1','8_E2'], // E3 sin mejora definida
+};
+
+const DET=['2_A','3_B','4_C','5_D','6_E','7_E1','8_E2','9_E3'];
 const CMAP={'AA':'1_AA','A':'2_A','B':'3_B','C':'4_C','D':'5_D','E':'6_E','E1':'7_E1','E2':'8_E2','E3':'9_E3',
   '1_AA':'1_AA','2_A':'2_A','3_B':'3_B','4_C':'4_C','5_D':'5_D','6_E':'6_E','7_E1':'7_E1','8_E2':'8_E2','9_E3':'9_E3'};
 
@@ -529,7 +562,7 @@ function renderDash(){
   });
   const tot=TRAMOS.reduce((a,t)=>a+byT[t].s,0);
   const sAA=byT['1_AA'].s;
-  const sDet=DET.reduce((a,t)=>a+byT[t].s,0);
+  const sDet=DET.reduce((a,t)=>a+(byT[t]?byT[t].s:0),0); // A→E3 (todo excepto AA)
   const tPM=TRAMOS.reduce((a,t)=>a+byT[t].s*EFIC[t]*CM[t]*TPROV[t],0);
   const tPJ=TRAMOS.reduce((a,t)=>a+byT[t].s*EFIC[t]*CJ[t]*TPROV[t],0);
   const pMora=tot>0?(tot-sAA)/tot:0;
@@ -543,8 +576,17 @@ function renderDash(){
     <div class="kpi kg"><div class="kpi-lbl">Inc. Prov. Jefe</div><div class="kpi-val">${fmtM(tPJ)}</div><div class="kpi-sub">Ahorro: ${fmtM(tPM-tPJ)}</div></div>`;
 
   // Estado
+  // Estado basado en reglas reales de transición
   let mej=0,cont=0,det=0;
-  TRAMOS.forEach(t=>{mej+=byT[t].s*MJ[t];cont+=byT[t].s*CJ[t];det+=byT[t].s*Math.max(0,1-CJ[t]-MJ[t]);});
+  TRAMOS.forEach(t=>{
+    const s=byT[t].s;
+    const mjp=MJ[t];
+    const cjp=CJ[t];
+    const djp=Math.max(0,1-cjp-mjp);
+    mej  +=s*mjp;   // % que mejora (paga y sube tramo)
+    cont +=s*cjp;   // % que mantiene (se queda en mismo tramo)
+    det  +=s*djp;   // % que empeora (baja a tramo siguiente)
+  });
   document.getElementById('egrid').innerHTML=`
     <div class="erow emej"><span class="elbl">MEJORA</span><div class="evals"><div class="eusd">${fmt(mej)}</div><div class="epct">${pct(tot>0?mej/tot:0)}</div></div></div>
     <div class="erow econt"><span class="elbl">CONTIENE</span><div class="evals"><div class="eusd">${fmt(cont)}</div><div class="epct">${pct(tot>0?cont/tot:0)}</div></div></div>
@@ -595,11 +637,28 @@ function renderProy(byT,tot){
 
 function renderMatriz(byT){
   const mx={};TRAMOS.forEach(t=>{mx[t]={};TRAMOS.forEach(t2=>mx[t][t2]=0)});
-  TRAMOS.forEach((t,i)=>{
+  TRAMOS.forEach(t=>{
     const s=byT[t].s;
+    const detPct=Math.max(0,1-CJ[t]-MJ[t]);
+    const mejPct=MJ[t];
+
+    // MANTIENE → mismo tramo
     mx[t][t]=s*CJ[t];
-    if(i>0) mx[t][TRAMOS[i-1]]=s*MJ[t];
-    if(i<8) mx[t][TRAMOS[i+1]]=s*Math.max(0,1-CJ[t]-MJ[t]);
+
+    // EMPEORA → siguiente tramo (según reglas reales)
+    const dest=EMPEORA_A[t];
+    if(dest) mx[t][dest]=(mx[t][dest]||0)+s*detPct;
+
+    // MEJORA → distribuir entre los tramos posibles de mejora
+    const posibles=MEJORA_DESDE[t]||[];
+    if(posibles.length>0 && mejPct>0){
+      // Distribuir proporcionalmente (más probabilidad a AA)
+      const pesos={'1_AA':4,'2_A':3,'3_B':2,'4_C':1,'5_D':1,'6_E':1,'7_E1':1};
+      let pesoTotal=posibles.reduce((a,p)=>a+(pesos[p]||1),0);
+      posibles.forEach(p=>{
+        mx[t][p]=(mx[t][p]||0)+s*mejPct*((pesos[p]||1)/pesoTotal);
+      });
+    }
   });
   const fin={};TRAMOS.forEach(t=>fin[t]=TRAMOS.reduce((a,o)=>a+(mx[o][t]||0),0));
   let h=`<thead><tr><th class="hp">TRAMOS</th>`;
@@ -627,7 +686,7 @@ function renderMatriz(byT){
 // ─── CLIENTES EN DETERIORA ────────────────────────────────────────────────
 function renderClientes(){
   const ft=gv('d0'),fv=gv('d1'),fc2=gv('d2'),fp=gv('d3'),ftr=gv('d4'),fd=gv('d5'),fh=gv('d6'),fs=document.getElementById('d7').value.toLowerCase().trim();
-  let res=[...FILT]; // todos los tramos AA→E3
+  let res=FILT.filter(r=>r.TRAMO!=='1_AA'&&r.TRAMO!=='?'); // A→E3 excluye AA y sin tramo
   if(ft)  res=res.filter(r=>r.TIENDA_CUPO===ft);
   if(fv)  res=res.filter(r=>r.VENDEDOR===fv);
   if(fc2) res=res.filter(r=>r.COBRADOR===fc2);
@@ -658,9 +717,9 @@ function renderClientes(){
     const mes=fvd?String(fvd.getMonth()+1).padStart(2,'0'):'—';
     const anio=fvd?fvd.getFullYear():'—';
     const fvStr=fvd?`${dia}/${mes}/${anio}`:'—';
-    // Estado basado en TRAMO real, no en el texto de la columna Estado
-    const ecls=r.TRAMO==='1_AA'||r.TRAMO==='2_A'?'epn':
-               r.TRAMO==='3_B'?'epr':'epm';
+    // Estado basado en TRAMO: AA=normal, A/B=riesgo, C→E3=mora
+    const ecls=r.TRAMO==='1_AA'?'epn':
+               r.TRAMO==='2_A'||r.TRAMO==='3_B'?'epr':'epm';
     // Texto: usar la calificación diaria real
     const estTxt=r.CALIF||r.TRAMO;
     return `<tr>
@@ -685,7 +744,7 @@ function srt(col){if(scol===col)sasc=!sasc;else{scol=col;sasc=true;}renderClient
 function exportExcel(){
   // Recoger los mismos datos que están en la tabla visible
   const ft=gv('d0'),fv=gv('d1'),fc2=gv('d2'),fp=gv('d3'),ftr=gv('d4'),fd=gv('d5'),fh=gv('d6'),fs=document.getElementById('d7').value.toLowerCase().trim();
-  let res=[...FILT];
+  let res=FILT.filter(r=>r.TRAMO!=='1_AA'&&r.TRAMO!=='?');
   if(ft)  res=res.filter(r=>r.TIENDA_CUPO===ft);
   if(fv)  res=res.filter(r=>r.VENDEDOR===fv);
   if(fc2) res=res.filter(r=>r.COBRADOR===fc2);
@@ -751,14 +810,14 @@ function exportExcel(){
 
   // Color de filas por tramo
   const tramoBg={
-    '1_AA':'E2EFDA','2_A':'EBF3FB','3_B':'FFF2CC',
-    '4_C':'FCE4D6','5_D':'FCE4D6','6_E':'FFB3B3',
+    '1_AA':'E2EFDA','2_A':'FFF2CC','3_B':'FCE4D6',
+    '4_C':'FFCCCC','5_D':'FFB3B3','6_E':'FF9999',
     '7_E1':'FF8080','8_E2':'FF6666','9_E3':'FF4444'
   };
   const tramoFg={
-    '1_AA':'375623','2_A':'1F4E79','3_B':'7E6000',
-    '4_C':'843C0C','5_D':'843C0C','6_E':'9C0006',
-    '7_E1':'9C0006','8_E2':'7F1919','9_E3':'5C0000'
+    '1_AA':'375623','2_A':'7E6000','3_B':'843C0C',
+    '4_C':'9C0006','5_D':'9C0006','6_E':'7F1919',
+    '7_E1':'7F1919','8_E2':'5C0000','9_E3':'3B0000'
   };
   for(let r=1;r<=rows.length;r++){
     const tramo=rows[r-1][3]||'';
