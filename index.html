@@ -120,6 +120,8 @@ select:focus,input:focus{border-color:var(--accent)}
 .bdg{font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;font-weight:600}
 .bdr{background:var(--red-bg);border:1px solid var(--red-border);color:#b91c1c}
 .bdb{background:var(--blue-bg);border:1px solid var(--blue-border);color:#1d4ed8}
+.btn-xls{background:#16a34a;color:#fff;border:none;border-radius:20px;padding:3px 14px;font-size:10px;font-weight:700;font-family:var(--mono);cursor:pointer;letter-spacing:.04em;transition:opacity .15s}
+.btn-xls:hover{opacity:.85}
 .dfilters{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
 .dfilters select,.dfilters input{font-size:11px;padding:5px 7px;min-width:120px}
 .dfilters input[type=text]{min-width:175px}
@@ -222,8 +224,12 @@ select:focus,input:focus{border-color:var(--accent)}
 
   <div style="margin-top:22px">
     <div class="dtop">
-      <div class="shdr" style="margin:0;border:none;padding:0">Clientes en Deteriora (C · D · E · E1 · E2 · E3)</div>
-      <div class="dbadges"><span class="bdg bdr" id="dcnt">0 clientes</span><span class="bdg bdb" id="dsal">$ 0,00</span></div>
+      <div class="shdr" style="margin:0;border:none;padding:0">Listado de Clientes — Todos los Tramos (AA → E3)</div>
+      <div class="dbadges">
+        <span class="bdg bdr" id="dcnt">0 clientes</span>
+        <span class="bdg bdb" id="dsal">$ 0,00</span>
+        <button class="btn-xls" onclick="exportExcel()" id="btn-xls">⬇ Exportar Excel</button>
+      </div>
     </div>
     <div class="dfilters">
       <select id="d0" onchange="renderClientes()"><option value="">Tienda Cupo</option></select>
@@ -231,7 +237,8 @@ select:focus,input:focus{border-color:var(--accent)}
       <select id="d2" onchange="renderClientes()"><option value="">Cobrador</option></select>
       <select id="d3" onchange="renderClientes()"><option value="">Producto</option></select>
       <select id="d4" onchange="renderClientes()">
-        <option value="">Tramo</option>
+        <option value="">Todos los tramos</option>
+        <option>1_AA</option><option>2_A</option><option>3_B</option>
         <option>4_C</option><option>5_D</option><option>6_E</option>
         <option>7_E1</option><option>8_E2</option><option>9_E3</option>
       </select>
@@ -246,6 +253,7 @@ select:focus,input:focus{border-color:var(--accent)}
           <th onclick="srt('CLIENTE')">Nombre Cliente ↕</th>
           <th onclick="srt('CEDULA')">Cédula ↕</th>
           <th onclick="srt('TRAMO')">Tramo ↕</th>
+          <th onclick="srt('CALIF')">Calif. Diaria ↕</th>
           <th onclick="srt('ESTADO')">Estado ↕</th>
           <th onclick="srt('SALDO')">Saldo Créd. Final ↕</th>
           <th onclick="srt('FECHA_VENCIMIENTO')">Fecha Venc. Inicial ↕</th>
@@ -254,7 +262,7 @@ select:focus,input:focus{border-color:var(--accent)}
           <th onclick="srt('COBRADOR')">Cobrador ↕</th>
           <th onclick="srt('PRODUCTO')">Desc. Política ↕</th>
         </tr></thead>
-        <tbody id="ctbody"><tr><td colspan="13" class="nodata">Carga un archivo para ver los clientes en deteriora</td></tr></tbody>
+        <tbody id="ctbody"><tr><td colspan="14" class="nodata">Carga un archivo para ver los clientes en deteriora</td></tr></tbody>
       </table>
     </div>
   </div>
@@ -619,7 +627,7 @@ function renderMatriz(byT){
 // ─── CLIENTES EN DETERIORA ────────────────────────────────────────────────
 function renderClientes(){
   const ft=gv('d0'),fv=gv('d1'),fc2=gv('d2'),fp=gv('d3'),ftr=gv('d4'),fd=gv('d5'),fh=gv('d6'),fs=document.getElementById('d7').value.toLowerCase().trim();
-  let res=FILT.filter(r=>DET.includes(r.TRAMO));
+  let res=[...FILT]; // todos los tramos AA→E3
   if(ft)  res=res.filter(r=>r.TIENDA_CUPO===ft);
   if(fv)  res=res.filter(r=>r.VENDEDOR===fv);
   if(fc2) res=res.filter(r=>r.COBRADOR===fc2);
@@ -642,7 +650,7 @@ function renderClientes(){
   document.getElementById('dcnt').textContent=res.length.toLocaleString()+' clientes';
   document.getElementById('dsal').textContent=fmt(ts);
   const tbody=document.getElementById('ctbody');
-  if(!res.length){tbody.innerHTML=`<tr><td colspan="13" class="nodata">No hay clientes en deteriora con los filtros aplicados</td></tr>`;return;}
+  if(!res.length){tbody.innerHTML=`<tr><td colspan="14" class="nodata">No hay clientes en deteriora con los filtros aplicados</td></tr>`;return;}
   const TC={'4_C':'t4C','5_D':'t5D','6_E':'t6E','7_E1':'t7E1','8_E2':'t8E2','9_E3':'t9E3'};
   tbody.innerHTML=res.map(r=>{
     const fvd=r.FECHA_VENCIMIENTO;
@@ -650,14 +658,18 @@ function renderClientes(){
     const mes=fvd?String(fvd.getMonth()+1).padStart(2,'0'):'—';
     const anio=fvd?fvd.getFullYear():'—';
     const fvStr=fvd?`${dia}/${mes}/${anio}`:'—';
-    const est=String(r.ESTADO||r.CALIF||'').toLowerCase();
-    const ecls=DET.includes(r.TRAMO)?'epm':(est.includes('normal')?'epn':'epr');
+    // Estado basado en TRAMO real, no en el texto de la columna Estado
+    const ecls=r.TRAMO==='1_AA'||r.TRAMO==='2_A'?'epn':
+               r.TRAMO==='3_B'?'epr':'epm';
+    // Texto: usar la calificación diaria real
+    const estTxt=r.CALIF||r.TRAMO;
     return `<tr>
       <td>${r.TIENDA_CUPO||'—'}</td>
       <td>${r.CLIENTE||'—'}</td>
       <td class="cmono">${r.CEDULA||'—'}</td>
       <td><span class="tp ${TC[r.TRAMO]||''}">${r.TRAMO}</span></td>
-      <td><span class="ep ${ecls}">${r.ESTADO||r.CALIF||'—'}</span></td>
+      <td class="cmono" style="font-weight:600">${r.CALIF||'—'}</td>
+      <td><span class="ep ${ecls}">${r.ESTADO||'—'}</span></td>
       <td class="csaldo">${fmt(r.SALDO)}</td>
       <td class="cfecha">${fvStr}</td>
       <td class="cfecha">${dia}</td><td class="cfecha">${mes}</td><td class="cfecha">${anio}</td>
@@ -668,6 +680,148 @@ function renderClientes(){
   }).join('');
 }
 function srt(col){if(scol===col)sasc=!sasc;else{scol=col;sasc=true;}renderClientes();}
+
+// ─── EXPORTAR EXCEL ──────────────────────────────────────────────────────
+function exportExcel(){
+  // Recoger los mismos datos que están en la tabla visible
+  const ft=gv('d0'),fv=gv('d1'),fc2=gv('d2'),fp=gv('d3'),ftr=gv('d4'),fd=gv('d5'),fh=gv('d6'),fs=document.getElementById('d7').value.toLowerCase().trim();
+  let res=[...FILT];
+  if(ft)  res=res.filter(r=>r.TIENDA_CUPO===ft);
+  if(fv)  res=res.filter(r=>r.VENDEDOR===fv);
+  if(fc2) res=res.filter(r=>r.COBRADOR===fc2);
+  if(fp)  res=res.filter(r=>r.PRODUCTO===fp);
+  if(ftr) res=res.filter(r=>r.TRAMO===ftr);
+  if(fd)  res=res.filter(r=>r.FECHA_VENCIMIENTO&&r.FECHA_VENCIMIENTO>=new Date(fd));
+  if(fh)  res=res.filter(r=>r.FECHA_VENCIMIENTO&&r.FECHA_VENCIMIENTO<=new Date(fh+'T23:59:59'));
+  if(fs)  res=res.filter(r=>(r.CLIENTE+r.CEDULA).toLowerCase().includes(fs));
+  if(scol){
+    res.sort((a,b)=>{
+      let va=a[scol],vb=b[scol];
+      if(va instanceof Date) va=va.getTime(); if(vb instanceof Date) vb=vb.getTime();
+      if(typeof va==='string') va=va.toLowerCase(); if(typeof vb==='string') vb=vb.toLowerCase();
+      return sasc?(va>vb?1:va<vb?-1:0):(va<vb?1:va>vb?-1:0);
+    });
+  }
+
+  if(!res.length){alert('No hay datos para exportar con los filtros actuales.');return;}
+
+  // Construir filas
+  const headers=['Tienda Cupo','Nombre Cliente','Cédula','Tramo','Calif. Diaria','Estado',
+    'Saldo Créd. Final','Fecha Venc. Inicial','Día','Mes','Año',
+    'Vendedor','Cobrador','Desc. Política','Regional','Línea Producto','Teléfono','Plazo'];
+
+  const rows=res.map(r=>{
+    const fvd=r.FECHA_VENCIMIENTO;
+    const dia =fvd?fvd.getDate():'';
+    const mes =fvd?fvd.getMonth()+1:'';
+    const anio=fvd?fvd.getFullYear():'';
+    const fvStr=fvd?`${String(dia).padStart(2,'0')}/${String(mes).padStart(2,'0')}/${anio}`:'';
+    return [
+      r.TIENDA_CUPO, r.CLIENTE, r.CEDULA, r.TRAMO, r.CALIF, r.ESTADO,
+      r.SALDO, fvStr, dia, mes, anio,
+      r.VENDEDOR, r.COBRADOR, r.PRODUCTO, r.REGIONAL, r.LINEA, r.TELEFONO, r.PLAZO
+    ];
+  });
+
+  // Crear workbook con SheetJS
+  const wb=XLSX.utils.book_new();
+  const wsData=[headers,...rows];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+
+  // Anchos de columna
+  ws['!cols']=[
+    {wch:28},{wch:35},{wch:14},{wch:8},{wch:10},{wch:12},
+    {wch:16},{wch:18},{wch:6},{wch:6},{wch:6},
+    {wch:28},{wch:28},{wch:22},{wch:18},{wch:18},{wch:14},{wch:8}
+  ];
+
+  // Estilo de cabecera (fila 1) — color azul oscuro
+  const range=XLSX.utils.decode_range(ws['!ref']);
+  for(let c=range.s.c;c<=range.e.c;c++){
+    const cell=ws[XLSX.utils.encode_cell({r:0,c})];
+    if(cell){
+      cell.s={
+        font:{bold:true,color:{rgb:'FFFFFF'},sz:11},
+        fill:{fgColor:{rgb:'1F4E79'}},
+        alignment:{horizontal:'center',vertical:'center',wrapText:true},
+        border:{bottom:{style:'medium',color:{rgb:'2563EB'}}}
+      };
+    }
+  }
+
+  // Color de filas por tramo
+  const tramoBg={
+    '1_AA':'E2EFDA','2_A':'EBF3FB','3_B':'FFF2CC',
+    '4_C':'FCE4D6','5_D':'FCE4D6','6_E':'FFB3B3',
+    '7_E1':'FF8080','8_E2':'FF6666','9_E3':'FF4444'
+  };
+  const tramoFg={
+    '1_AA':'375623','2_A':'1F4E79','3_B':'7E6000',
+    '4_C':'843C0C','5_D':'843C0C','6_E':'9C0006',
+    '7_E1':'9C0006','8_E2':'7F1919','9_E3':'5C0000'
+  };
+  for(let r=1;r<=rows.length;r++){
+    const tramo=rows[r-1][3]||'';
+    const bg=tramoBg[tramo]||'FFFFFF';
+    const fg=tramoFg[tramo]||'000000';
+    for(let c=range.s.c;c<=range.e.c;c++){
+      const addr=XLSX.utils.encode_cell({r,c});
+      if(!ws[addr]) ws[addr]={t:'z',v:''};
+      ws[addr].s={
+        fill:{fgColor:{rgb:bg}},
+        font:{color:{rgb:fg},sz:10},
+        alignment:{vertical:'center'},
+        border:{
+          bottom:{style:'thin',color:{rgb:'D4C9B0'}},
+          right:{style:'thin',color:{rgb:'D4C9B0'}}
+        }
+      };
+    }
+    // Columna Saldo: formato numérico
+    const saldoCell=ws[XLSX.utils.encode_cell({r,c:6})];
+    if(saldoCell&&typeof rows[r-1][6]==='number'){
+      saldoCell.t='n';
+      saldoCell.z='#,##0.00';
+    }
+  }
+
+  // Fila de totales al final
+  const totRow=rows.length+1;
+  const totSaldo=res.reduce((s,r)=>s+r.SALDO,0);
+  XLSX.utils.sheet_add_aoa(ws,[
+    ['TOTAL','','',res.length+' registros','','',totSaldo,'','','','','','','','','','','']
+  ],{origin:{r:totRow,c:0}});
+  const totCells=['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R'];
+  for(let i=0;i<18;i++){
+    const addr=totCells[i]+(totRow+1);
+    if(!ws[addr]) ws[addr]={t:'z',v:''};
+    ws[addr].s={font:{bold:true,color:{rgb:'1F4E79'}},fill:{fgColor:{rgb:'BDD7EE'}},alignment:{vertical:'center'}};
+  }
+  const saldoTot=ws['G'+(totRow+1)];
+  if(saldoTot){saldoTot.t='n';saldoTot.z='#,##0.00';}
+
+  // Hoja resumen por tramo
+  const tramosResumen=[['Tramo','Descripción','Cantidad','Saldo Créd. Final','% del Total']];
+  const TDESC2={'1_AA':'Al día','2_A':'1-30d','3_B':'31-60d','4_C':'61-90d','5_D':'91-120d','6_E':'121-150d','7_E1':'151-180d','8_E2':'181-360d','9_E3':'+360d'};
+  const totAll=res.reduce((s,r)=>s+r.SALDO,0);
+  TRAMOS.forEach(t=>{
+    const sub=res.filter(r=>r.TRAMO===t);
+    const sT=sub.reduce((s,r)=>s+r.SALDO,0);
+    if(sub.length>0) tramosResumen.push([t,TDESC2[t],sub.length,sT,totAll>0?sT/totAll:0]);
+  });
+  tramosResumen.push(['TOTAL','',res.length,totAll,1]);
+  const wsR=XLSX.utils.aoa_to_sheet(tramosResumen);
+  wsR['!cols']=[{wch:10},{wch:12},{wch:12},{wch:18},{wch:14}];
+
+  XLSX.utils.book_append_sheet(wb,ws,'Clientes');
+  XLSX.utils.book_append_sheet(wb,wsR,'Resumen por Tramo');
+
+  // Nombre del archivo con fecha y filtros
+  const hoy=new Date();
+  const fecha=`${hoy.getFullYear()}${String(hoy.getMonth()+1).padStart(2,'0')}${String(hoy.getDate()).padStart(2,'0')}`;
+  const tiendaStr=ft?('_'+ft.replace(/[^A-Z0-9]/gi,'_').substring(0,20)):'_Todas';
+  XLSX.writeFile(wb,`Cartera_Marcimex${tiendaStr}_${fecha}.xlsx`,{cellStyles:true,bookSST:false});
+}
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────
 function esc(s){return String(s).replace(/"/g,'&quot;').replace(/</g,'&lt;')}
